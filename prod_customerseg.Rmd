@@ -1,0 +1,521 @@
+---
+title: "Product and Customer Segment Analysis"
+author: Phuong Tran
+output: pdf_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
+```
+
+
+
+# In this document, transactiondata and purchasedata were processed and explored:
+1. Examined transactiondata:
++ Checked for outliers and missing values
++ Added extra features including PACK_SIZE and BRAND_NAME
+2. Examined purchasedata:
++ Checked for nulls 
++ Checked for distribution of customers based on LIFESTAGE and PREMIUM_GROUPS
+3. Merged transactiondata and purchasedata for analysis: 
++ Explored which customer segments drove total sales, product quantity and product price
++ Performed t-test to confirm the significance of difference
++ Explored which Brands were preferred by each Customer Segment, visualized with mosaic plot and significance tested with Pearson Chi-square test
++ Explored which PACK_SIZEs were preferred by each Customer Segment, visualized with mosaic plot and significance tested with Pearson Chi-square test
+
+
+
+```{r loadPackages, include=TRUE}
+# Load packages
+library(data.table)
+library(ggplot2)
+library(readxl)
+library(readr)
+library(dplyr)
+library(tidyr)
+library(arules)
+library(methods)
+library(ggmosaic)
+```
+
+```{r import data}
+# Import data
+transactiondata <- read_excel("QVI_transaction_data.xlsx")
+purchasebehaviour <- read_csv("QVI_purchase_behaviour.csv")
+```
+```{r Examining transaction data}
+# Examine transaction data 
+head(transactiondata)
+```
+
+```{r Convert DATE to date format}
+# Convert DATE column to date format
+transactiondata$DATE<-as.Date(transactiondata$DATE,origin = "1899-12-30")
+head(transactiondata)
+```
+
+```{r Examine PROD_NAME}
+#Summary of PROD_NAME
+table(transactiondata$PROD_NAME,useNA = "ifany") # no NA values
+n_distinct(transactiondata$PROD_NAME) #114 distinct product names
+```
+
+```{r Further Examine PROD_NAME}
+# Split PROD_NAME entries to words by space and then rename the column to words
+productWords<-data.table(unlist(strsplit(unique(transactiondata$PROD_NAME)," ")))
+productWords<-setNames(productWords,"words")
+```
+
+```{r Clean productWords}
+# Clean productWords from blank rows digits and special characters
+productWords<-productWords[!(words=="&"|words=="")][-grep("^[0-9]",words)] 
+```
+
+```{r Common words}
+# Find common words among PROD_NAME
+freq_words<-as.data.frame(table(productWords))
+
+#Top 20 most common words
+head(freq_words[order(-freq_words$Freq),],20) # order descending according to Frequency
+```
+
+```{r Remove Salsa entries}
+# Remove Salsa entries
+transactiondata<-transactiondata[grep("SALSA",transactiondata$PROD_NAME,ignore.case=TRUE,
+                                      invert=TRUE),]
+```
+
+```{r Check if transactiondata has any NULL values}
+# Check if transactiondata has any NULL values
+summary(is.na(transactiondata)) ## no columns have any na values
+```
+
+```{r print out the transaction where 200 packs of chips were bought}
+# print out the transaction where 200 packs of chips were bought
+transactiondata[transactiondata$PROD_QTY==200,]
+```
+
+```{r Check if this customer has had any other transactions}
+# Check if this customer has had any other transactions
+transactiondata[transactiondata$LYLTY_CARD_NBR==226000,] #maybe bought chips for commercial purposes
+```
+
+```{r Remove this customer from further analysis}
+# Remove this customer from further analysis
+transactiondata<-transactiondata[transactiondata$LYLTY_CARD_NBR!=226000,]
+```
+
+```{r Summary of count by date}
+# Summary of count by date
+transaction_by_day<-transactiondata %>% group_by(DATE) %>% summarise(N=n())
+```
+
+```{r Find the missing date}
+# create a data frame with all the dates between 2018-07-01 and 2019-06-30
+dateseq<-as.data.frame(seq(as.Date("2018-07-01"),as.Date("2019-06-30"),by="day"))
+dateseq<-setNames(dateseq,"DATE")
+
+# Find the missing date by anti_join, return all rows from dataseq where there are not matching values in transactiondata
+anti_join(dateseq,transactiondata,by="DATE")
+```
+
+## Missing date is 2018-12-25, which is Xmas date! Store was probably closed
+
+```{r Add missing date to transaction_by_day df}
+# Add this date, N=0 to transaction_by_day df
+transaction_by_day<-rbind(transaction_by_day,data.frame(DATE=as.Date("2018-12-25"),N=0))
+```
+
+```{r Set theme for plots}
+# Set theme for plots
+theme_set(theme_bw())
+theme_update(plot.title=element_text(hjust=0.5),plot.subtitle=element_text(hjust=0.5))
+```
+
+```{r line graph for transactions over time}
+# line graph for transactions over time
+ggplot(transaction_by_day,aes(x=DATE,y=N))+
+  geom_line()+
+  labs(title="Transactions over time",x="Day",y="Number of transactions")
+```
+
+## Steady purchase throughout the year but higher near the end of the year
+
+```{r add column PACK_SIZE}
+# add column PACK_SIZE to transactiondata
+transactiondata$PACK_SIZE<- parse_number(transactiondata$PROD_NAME)
+```
+
+```{r create barplot number of transactions~packsize}
+# Barplot Number of transactions ~ packsize
+ggplot(transactiondata, aes(x=factor(PACK_SIZE)))+
+  geom_bar()+
+  labs(title="Number of transactions by pack size",x="Pack size",
+       y="Number of transactions",
+       subtitle=paste("Total:",nrow(transactiondata),"transactions"))
+```
+
+## Pack size 175g is the most popular choice among all transactions
+
+```{r Create brand name}
+# Extract the first word starting from 1 position, to 1 position, separated by " " 
+transactiondata$BRAND_NAME<-stringr::word(transactiondata$PROD_NAME,1,1,sep=" ")
+### Overview of all unique brand names
+unique(transactiondata$BRAND_NAME)
+# Make some adjustments to brand names
+# Find and replace Red with RRD.
+transactiondata[grep("Red",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"RRD"
+# Find and replace Dorito with Doritos
+transactiondata[grep("Dorito",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"Doritos"
+# Find and replace Infzns with Infuzions
+transactiondata[grep("Infzns",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"Infuzions"
+# Find and replace Snbts with Sunbites
+transactiondata[grep("Snbts",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"Sunbites"
+transactiondata[grep("WW",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"Woolworths"
+transactiondata[grep("Grain",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"GrnWves"
+transactiondata[grep("Smith",transactiondata$BRAND_NAME,fixed=TRUE),"BRAND_NAME"]<-"Smiths"
+# Double check the brand names
+unique(transactiondata$BRAND_NAME) #### 21 distinct brand names ####
+```
+
+
+```{r Examining customer data}
+summary(purchasebehaviour)
+# Check if there's any NA values in any column
+summary(is.na(purchasebehaviour)) # No NA
+```
+
+```{r Check distribution of LIFESTAGE,fig.width=10,fig.align="center"}
+# Check distribution of LIFESTAGE
+ggplot(purchasebehaviour,aes(x=LIFESTAGE,fill=LIFESTAGE))+
+  geom_bar(show.legend=TRUE)+
+  labs(title="Distribution of customer's Lifestage",y="Number of customers")+
+  scale_x_discrete(guide = guide_axis(n.dodge = 3))
+```
+
+## Fewer members in New Families and Midage singles/couples and Young families 
+## Fair distribution among Retirees, Older Families and Young singles/couples
+
+```{r Check distribution of PREMIUM_GROUP,fig.width=10,fig.align="center" }
+# Check distribution of PREMIUM_CUSTOMER
+ ggplot(purchasebehaviour,aes(x=PREMIUM_CUSTOMER))+
+  geom_bar()+
+  labs(title="Distribution of customer's Premium groups",y="Number of customers") 
+```
+## Fewer members in Premium group. Highest number of members in Mainstream.
+
+```{r Merge transaction data to customer data}
+# Merge transaction data to customer data
+data<-left_join(transactiondata,purchasebehaviour)
+```
+
+```{r Check for missing customer details}
+summary(is.na(data$LIFESTAGE))### no. of FALSE= number of rows, so no missing customer details
+```
+```{r Save the dataset for subsequent analysis,echo=FALSE}
+fwrite(data,paste0("/Users/ccmb_hd/OneDrive - Deakin University/ds_qvi_proj/","QVI_data.csv"))
+```
+
+```{r fig.width=10,fig.align="center"}
+### TOT_SALES by LIFESTAGE and PREMIUM_CUSTOMER
+
+## use geom_bar(), with weight aes to represent the sum of sales in each group.  
+ggplot(data,aes(x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(aes(weight=TOT_SALES),position="dodge")+
+  labs(title="Total sales of chips by Lifestage and premium groups",
+       y="Total sales",x="Premium groups") 
+```
+
+## Sales are coming from Budget-Older families, Mainstream-Young singles/couples and Mainstream-retirees 
+## Overall Premium group spend less in total
+## This might be subjected to the imbalance between the number of customers in each group 
+
+```{r Number of transactions by Lifestage and Premium_customer,fig.width=10,fig.align="center"}
+# Number of transactions by Lifestage and Premium_customer
+ggplot(data,aes(x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(position="dodge")+
+  labs(title="Number of transactions by lifestage and premium groups",
+       y="Number of transactions",x="Premium groups")
+```
+
+## Budget-Older families does have the highest number of transactions over the year, followed by Mainstream-Retirees and Mainstream-Young singles/couples
+## This might account for higher sales in these groups, but it could be because there are more members in these groups to start with, or the value of their purchase is higher than other groups 
+
+```{r Number of customers by Lifestage and Premium_customer, fig.width=10,fig.align="center"}
+### Aggregate data into subsets by PREMIUM_CUSTOMER and LIFESTAGE, then apply n_distinct 
+#to LYLT_CARD_NBR to count distinct customers. 
+customer_nbr<-setNames(aggregate(data$LYLTY_CARD_NBR, 
+                                 by=list(data$PREMIUM_CUSTOMER,data$LIFESTAGE),
+                                 FUN=n_distinct),
+                       c("PREMIUM_CUSTOMER","LIFESTAGE","CUSTOMER_NUMBER"))
+
+### Plot no. of customers ~ Lifestage and Premium_customer
+ggplot(customer_nbr,aes(y=CUSTOMER_NUMBER,x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(stat="identity",position="dodge")+
+  labs(title="Number of customers by Lifestage and Premium groups",
+       x="Premium groups",y="Number of customers")
+```
+
+## Mainstream-Young singles/couples has the highest number of members (~8,000), followed by Mainstream-Retirees and Budget-Older Singles/Couples
+
+## Interestingly, Budget-Older Families have the least number of members but made the highest number of transactions over the year and also contributed to the highest total sales among three segments
+
+```{r Average number of chips purchased by each customer by LIFESTAGE and PREMIUM_CUSTOMER,fig.width=10,fig.align="center"}
+# PROD_QTY ~ PREMIUM_CUSTOMER and LIFESTAGE
+# Calculate average number of PROD_QTY per customer by PREMIUM_CUSTOMER and LIFESTAGE
+customer_nbr$PROD_QTY<-aggregate(data$PROD_QTY, by=list(data$PREMIUM_CUSTOMER,data$LIFESTAGE),
+                                 FUN=sum)$x # Add sum of PROD_QTY by groups to customer_nbr
+
+# Average number of chips by group
+customer_nbr$AVR_PROD_QTY<-customer_nbr$PROD_QTY/customer_nbr$CUSTOMER_NUMBER 
+
+# Plot average no. of chips per customer by LIFESTAGE and PREMIUM_CUSTOMER
+ggplot(customer_nbr,aes(y=AVR_PROD_QTY,x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(stat="identity",position="dodge")+
+  labs(title="Average number of chips per customer by Lifestage and Premium groups",
+       x="Premium groups",y="Average number of chips")
+```
+
+## Older families and Young families, regardless of premium groups, buy more chips per customer compared to other groups
+
+```{r Average price per chip unit bought by each customer by LIFESTAGE and PREMIUM_CUSTOMER ,fig.width=10,fig.align="center"}
+# PROD_PRICE ~ PREMIUM_GROUP and LIFESTAGE
+# Product_price for each unit chip per transaction
+data$PROD_PRICE<-data$TOT_SALES/data$PROD_QTY
+
+# Average price per unit chip by each customer
+temp<-setNames(aggregate(data$PROD_PRICE, 
+                         by=list(data$PREMIUM_CUSTOMER,data$LIFESTAGE,data$LYLTY_CARD_NBR),
+                         FUN=mean),
+              c("PREMIUM_CUSTOMER","LIFESTAGE","LYLTY_CARD_NBR","MEAN_PRICE"))
+
+# Calculate average price per unit chip by each customer by groups
+customer_nbr$AVR_PROD_PRICE<-aggregate(temp$MEAN_PRICE,
+                                       by=list(temp$PREMIUM_CUSTOMER,temp$LIFESTAGE),
+                                       FUN=mean)$x
+
+### Plot average chip price per customer by LIFESTAGE and PREMIUM_CUSTOMER
+ggplot(customer_nbr,aes(y=AVR_PROD_PRICE,x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(stat="identity",position="dodge")+
+  labs(title="Average chip price per customer by Lifestage and Premium groups",
+       x="Premium groups",y="Average Chip price")
+```
+
+## Quite similar average chip price bought by each customer from different groups, but Mainstream- Young and Midage singles/couples and seem to spend more on average chip compared to the rest of the segments. 
+## Let's do t-test to test the signicicance of PROD_PRICE purchased by these two segments in Mainstream compared to their counterparts in Budget and Premium. 
+
+
+```{r t-test for the difference in average chip price purchased by Young singles/couples between Mainstream and Budget}
+# t-test for the difference in average chip price purchased by Young singles/couples 
+#between Mainstream and Budget
+t.test(data=data[data$PREMIUM_CUSTOMER=="Mainstream"|data$PREMIUM_CUSTOMER=="Budget"
+                 &data$LIFESTAGE=="YOUNG SINGLES/COUPLES",],
+       PROD_PRICE~PREMIUM_CUSTOMER)
+#### p-value<<0.05 --> the difference is significant between Young singles/couples 
+#Mainstream vs Budget ####
+```
+
+```{r t-test for the difference in average chip price purchased by Young singles/couples between Mainstream and Premium}
+# t-test for the difference in average chip price purchased by Young singles/couples 
+#between Mainstream and Premium
+t.test(data=data[data$PREMIUM_CUSTOMER=="Mainstream"|data$PREMIUM_CUSTOMER=="Premium"&
+                   data$LIFESTAGE=="YOUNG SINGLES/COUPLES",],
+       PROD_PRICE~PREMIUM_CUSTOMER)
+#### p-value<<0.05 -> the difference in chip price is significant between 
+#Young singles/couples Mainstream vs Premium ####
+```
+
+```{r t-test for the difference in average chip price purchased by Midage Singles/Couples between Mainstream and Budget}
+# t-test for the difference in average chip price purchased by Midage Singles/Couples 
+#between Mainstream and Budget
+t.test(data=data[data$PREMIUM_CUSTOMER=="Mainstream"|data$PREMIUM_CUSTOMER=="Budget"&
+                   data$LIFESTAGE=="MIDAGE SINGLES/COUPLES",],
+       PROD_PRICE~PREMIUM_CUSTOMER)
+#### p-value<<0.05 --> the difference is significant between 
+#Midage singles/couples Mainstream vs Budget ####
+```
+
+```{r t-test for the difference in average chip price purchased by Midage Singles/Couples between Mainstream and Premium}
+# t-test for the difference in average chip price purchased by Midage Singles/Couples 
+#between Mainstream and Premium
+t.test(data=data[data$PREMIUM_CUSTOMER=="Mainstream"|data$PREMIUM_CUSTOMER=="Premium"&
+                   data$LIFESTAGE=="MIDAGE SINGLES/COUPLES",],
+       PROD_PRICE~PREMIUM_CUSTOMER)
+#### p-value<<0.05--> the difference is significant between 
+#Midage singles/couples Mainstream vs Premium ####
+```
+
+## Overall, p-value<<0.05 in four t-tests, suggesting that average chip price bought by Mainstream Young and Midage Singles/Couples is significantly higher than their counterparts in Budget and Premium group
+
+```{r Brands prefered by Customer Segment,fig.align="center"}
+## Brands preferred by each Customer Segment
+
+# Create a copy of data to work on 
+data1<-data
+
+# get the shopping baskets based on TXN_ID
+Baskets<- data1 %>%
+  group_by(TXN_ID) %>%
+  summarise(basket=as.vector(list(BRAND_NAME)))
+str(Baskets)
+
+# Compute transactions
+transactions<-as(Baskets$basket,"transactions")
+# Number of brands per basket
+
+hist(size(transactions),main="Number of brands per basket",xlab="Number of brands per basket")
+mtext(paste("Total:",length(transactions),"baskets,",sum(size(transactions)),"items",
+            count(transactions@itemInfo),"distinct brands"))
+## Most people only have 1 brand per transaction ##
+
+# distribution of shoppers basket
+basketSizes<-size(transactions)
+summary(basketSizes)
+# quantile breakdown
+quantile(basketSizes,probs=seq(0,1,0.1))
+
+# get average basket amount, by TXN_ID
+meanBasketAmt<-aggregate(TOT_SALES~TXN_ID,data=data1,sum)
+summary(meanBasketAmt) ### 7.36 = average basket amount
+
+# get relative frequency of each brand in the transaction data
+item_frequencies<-itemFrequency(transactions)  
+
+# absolute number of times a brand appear in all transactions 
+brandCount<-round((item_frequencies/sum(item_frequencies))*sum(basketSizes))
+summary(brandCount)
+
+# Get top 10 brands in all transactions
+orderedBrands<-sort(brandCount,decreasing=TRUE)
+orderedBrands[1:10] 
+
+#how many times Kettle appears divided by total no. of transactions
+orderedBrands[1]/dim(transactions)[1] 
+```
+
+## Kettle is the most popular among all customers, followed by Smiths and Doritos 
+## The most popular brand (Kettle) appeared in their carts 16.8% of the time
+
+```{r Visualise and test association between BRAND_NAME and CUSTOMER segment}
+# create customer segment column based on PREMIUM_CUSTOMER and LIFESTAGE
+data1$CUSTOMER_SEGMENT<-paste(data1$PREMIUM_CUSTOMER,data1$LIFESTAGE,sep="_")
+
+# Set CUSTOMER_SEGMENT and BRAND_NAME as categorical factors
+data1$CUSTOMER_SEGMENT<-as.factor(data1$CUSTOMER_SEGMENT)
+data1$BRAND_NAME<-as.factor(data1$BRAND_NAME)
+
+# create mosaic plot 
+p1<-ggplot(data=data1)+
+  geom_mosaic(aes(x=product(BRAND_NAME,CUSTOMER_SEGMENT),fill=CUSTOMER_SEGMENT))
+
+# display percentage of conditional frequencies, where BRAND_NAME occurs for each CUSTOMER_SEGMENT 
+p1d<-ggplot_build(p1)$data %>% as.data.frame() %>% filter(.wt>0)
+
+# function to extract percentage of conditional frequencies from mosaic plot data
+compt_perc=function(x){
+  d=c(x,1)-c(0,x)
+  d[-length(d)]
+}
+
+# compute conditional percentage
+x=tapply(p1d$ymax,factor(p1d$fill,levels=unique(p1d$fill)),compt_perc)
+x=unlist(x)
+p1d$percentage=paste0(round(100*x,1),"%")
+
+# finalize the mosaic plot
+p2<-p1+
+    geom_text(data=p1d,aes(x=(xmin+xmax)/2,
+                                  y=(ymin+ymax)/2,
+                           label=ifelse(parse_number(percentage)>5,percentage,'')),
+              size=2.5) +
+  scale_x_productlist(labels=NULL)+
+  labs(x="Customer Segment",y="Chip Brand")
+
+# Add Pearson Chi-square test to see the significance between chip brands and customer segment
+chisq=chisq.test(xtabs(~BRAND_NAME+CUSTOMER_SEGMENT,data=data1))
+subtitle=paste("Pearson's Chi-squared test:",round(chisq[[1]],4),"df:",chisq[["parameter"]][["df"]],
+               "p-value",chisq[[3]])
+
+# final graph
+p2<-p2+ labs(title="Frequency of chip brands associated with different Customer Segment",
+         subtitle=subtitle) +theme(axis.ticks.x = element_blank(),
+                                   plot.title=element_text(hjust=0.5),
+                                   plot.subtitle = element_text(hjust=0.5))
+```
+
+```{r plot p2,fig.align="center",fig.height=15,fig.width=20}
+p2
+```
+
+## We can see that Chip brand is significantly associated with Customer Segment. 
+
+## 16.9% of Mainstream-Young singles/couples purchased Kettle, the next popular brand among this segment is Doritos and Pringles at 10.8% and 10.5% respectively. The least favorite brands are Burger, Cheetos and CCs. 
+
+## 16.5% of Mainstream-Midage singles/couples purchased Kettle, the next popular brand among this segment is Smiths (10.3%), Doritos (9.8%) and Pringles (9.4%)
+
+```{r PACK_SIZE preferred by Customer_segment}
+# Set PACK_SIZE as a factor 
+data1$PACK_SIZE<-as.factor(data1$PACK_SIZE)
+levels(data1$PACK_SIZE)
+
+# Percentage of each pack size's occurrence in the whole population
+packsize_freq=as.data.frame(prop.table(table(data1$PACK_SIZE)))
+
+# Sort df according to decreasing Frequency
+packsize_freq<-packsize_freq[order(-packsize_freq$Freq),]
+
+# Top 10 pack size purchased by the whole population
+barplot(packsize_freq$Freq,main = "Pack size frequency among all transactions",xlab="Pack size",
+        names.arg =packsize_freq$PACK_SIZE)
+mtext(paste("Total:",sum(table(data1$PACK_SIZE)),"transactions,", 
+            nlevels(data1$PACK_SIZE),"distinct pack sizes"))
+```
+
+## Top popular pack size among all transactions are 175g, followed by 150g,134g and 110g. 
+
+```{r Mosaic plot}
+# Create mosaic plot PACK_SIZE ~ CUSTOMER_SEGMENT
+p3<-ggplot(data=data1)+
+  geom_mosaic(aes(x=product(PACK_SIZE,CUSTOMER_SEGMENT),fill=CUSTOMER_SEGMENT))
+
+# display percentage of conditional frequencies, where PACK_SIZE occurs for each CUSTOMER_SEGMENT 
+p3d<-ggplot_build(p3)$data %>% as.data.frame() %>% filter(.wt>0)
+
+# compute conditional percentage
+x=tapply(p3d$ymax,factor(p3d$fill,levels=unique(p3d$fill)),compt_perc)
+x=unlist(x)
+p3d$percentage=paste0(round(100*x,1),"%")
+# Look at the distribution of percentage
+
+summary(parse_number(p3d$percentage)) # Mean percentage is 5.0, 
+#so we'll display only those >5 in final mosaic plot
+
+# finalize the mosaic plot
+p4<-p3+
+    geom_text(data=p3d,aes(x=(xmin+xmax)/2,
+                                  y=(ymin+ymax)/2,label=ifelse(parse_number(percentage)>5,percentage,'')),
+              size=2.5) +
+  scale_x_productlist(labels=NULL)+
+  labs(x="Customer Segment",y="Pack size")
+
+# Add Pearson Chi-square test to see the significance between chip brands and customer segment
+chisq_p4=chisq.test(xtabs(~PACK_SIZE+CUSTOMER_SEGMENT,data=data1)) 
+chisq_p4 # There's significant association between pack size and customer segments. 
+subtitle_p4=paste("Pearson's Chi-squared test:",round(chisq_p4[[1]],4),"df:",
+                  chisq_p4[["parameter"]][["df"]],"p-value",chisq_p4[[3]])
+
+# final graph
+p4<-p4+ labs(title="Frequency of Pack size associated with different Customer Segment",
+             subtitle=subtitle_p4) +theme(axis.ticks.x = element_blank(),
+                                          plot.title=element_text(hjust=0.5),
+                                          plot.subtitle = element_text(hjust=0.5))
+```
+
+```{r Plot p4, fig.align="center",fig.height=15,fig.width=20}
+p4
+```
+## We can see that pack size and customer segment are significantly associated.
+## Mainstream Young singles/couples preferred 175g the most at 21.9%, followed by 150g at 13.9%, both of which are slightly lesser than the population average which is 26.9% (175g) and 16.3% for 150g size. 
+## Mainstream Midage singles/couples also preferred 175g and 150g pack size. 
