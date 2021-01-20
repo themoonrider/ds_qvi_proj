@@ -28,13 +28,18 @@ knitr::opts_chunk$set(echo = TRUE, warning=FALSE, message=FALSE)
 # Insights:
 *   It was found that total sales of chips was driven by 3 main customer segments: (i) Budget-Older Families (ii) Mainstream-Young Singles/Couples and (iii) Mainstream-Retirees
 *   Budget-Older Families have the least number of members among 3 segments but made the highest number of transactions over the year and purchased the highest number of chips per customer and spent reasonable on chip price. Their favorite brands are Kettle (13.4%), Smiths (12%), Doritos (8.8%) and Pringles (8.5%). **This segment can be seen as a chip quantity-driver for total sales**. 
+
 *   Mainstream-Young Singles/Couples have the highest number of members among 3 segments, made the least number of transactions over the year and purchased the least number of chips per customer. However, they spent significantly higher amount on average chip price compared to the other two segments. Their favorite brands are Kettle (16.9%), Doritos (10.8%), Pringles (10.5%) and Smiths (8.9%). **This segment can be seen as a chip price-driver for total sales** 
+
 *   Mainstream-Retirees made more total transactions compared to Mainstream-Young Singles/Couples but total sales was slightly lower. They also have lower number of members, lower number of chips and lower chip priced spent per customer compared to Mainstream-Young Singles/Couples. This segment preferred Kettles (14.7%), Smiths (10.5%), Pringles (9.5%) and Doritos (9.4%). **This segment can be seen as chip quantity-driver for total sales, though less of a factor compared to Budget-Older Families**
+
 *   All segments preferred 175g, 150g and 134g pack size. 
 
 # Recommendations:
 *   **Brands to stock up:** Kettle, Doritos, Pringles and Smiths 
+
 *   **Pack sizes to stock up:** 175g, 150g and 134g
+
 *   **In case of promotions, order of implementation** on brands should be: 1st - Smiths, 2nd - Pringles, 3rd - Doritos and **lastly Kettle**. This is to target quantity-drivers with their favorite brands while still optimizing spending from price-driver (Mainstream Young Singles/Couples).
 
 
