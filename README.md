@@ -1,6 +1,6 @@
 # Commercial Insights from Transaction and Customer Data: Project Overview
 
-*   264,836 transactions of all chips purchased over one year and Customer data of 72,637 members were checked for missing data and nulls. 
+*   264,836 transactions of all chips purchased over one year and Customer data of 72,637 members were checked for missing data, nulls and outliers. 
 *   Engineered features from the text of product names to extract brand names and pack size to each transaction.
 *   Joined two dataframes to examine customer segments and their purchase patterns. 
 *   Performed t-test and Chi-squared test to test the association between customer segments and their purchase behaviors. 
@@ -42,8 +42,8 @@ Two files were used: transactiondata and purchasedata.
 
 21 Brand names were extracted and made unnique from 114 distinct Product descriptions. 21 Customer Segments were formed based on 3 Lifestages and 7 Premium groups. Association between Brand names and Customer Segments were tested with Pearson Chi-squared test. 
 
-![alt text](images/top10_brands.png "Top 10 popular brands)
-**Top 10 most popular brands**
+![alt text](images/top10_brands.png "Top 10 popular brands")
+
 
 
 ![alt text](images/brand_customer.png "Brand names and Customer Segments Association")
@@ -52,9 +52,10 @@ Two files were used: transactiondata and purchasedata.
 ## Pack size and Customer Segment
 
 20 distinct pack sizes were extracted from Product descriptions. Association between Pack sizes and Customer Segments were tested with Pearson Chi-squared test.
-![alt text](images/top_packsize.png "Top pack sizes)
-**Pack size popularity**
+![alt text](images/top_packsize.png "Top pack sizes")
+
 
 
 ![alt text](images/packsize_customer.png "Pack size and Customer Segments Association")
+
 **Pack Sizes and Customer Segments Association**
