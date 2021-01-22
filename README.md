@@ -30,7 +30,7 @@ Two files were used: transactiondata and purchasedata.
 ![alt text](images/purchasebehaviour.png "purchasedata")
 
 **Data exploration**
-![alt text](images/transactions_time.tiff "transactions_time")
+![alt text](images/transactions_time.png "transactions_time")
 **Number of transactions over time**
 
 
