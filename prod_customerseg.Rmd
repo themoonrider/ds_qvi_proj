@@ -222,6 +222,18 @@ ggplot(purchasebehaviour,aes(x=LIFESTAGE,fill=LIFESTAGE))+
 ```
 ## Fewer members in Premium group. Highest number of members in Mainstream.
 
+```{r Alternatively can combine LIFESTAGE and PREMIUM groups in one graph, fig.align="center",fig.width=10}
+
+# The graph with labels in percentage
+ggplot(purchasebehaviour,aes(x=PREMIUM_CUSTOMER,fill=LIFESTAGE))+
+  geom_bar(stat="count")+
+  labs(title="Distribution of customer segments",
+       x="Premium Groups",y="Number of customers")+
+  stat_count(geom = "text",
+             aes(label=paste(round((..count..)/sum(..count..)*100,1),"%")),
+             position=position_stack(vjust=0.5))
+```
+
 ```{r Merge transaction data to customer data}
 # Merge transaction data to customer data
 data<-left_join(transactiondata,purchasebehaviour)
@@ -535,3 +547,72 @@ p4
 ## We can see that pack size and customer segment are significantly associated.
 ## Mainstream Young singles/couples preferred 175g the most at 21.9%, followed by 150g at 13.9%, both of which are slightly lesser than the population average which is 26.9% (175g) and 16.3% for 150g size. 
 ## Mainstream Midage singles/couples also preferred 175g and 150g pack size. 
+
+```{r Total sales by month,fig.align="center",fig.width=10}
+# Transform DATE to months factor, &B for full month and sort months chronically
+data1$MONTH<-factor(format(data1$DATE,"%B"),levels=month.name)
+
+# Check levels of MONTH factor
+levels(data1$MONTH) # 12 months, chronically ordered
+
+# Plot SALES ~ MONTHS
+ggplot(data=data1,aes(x=MONTH))+
+  geom_bar(aes(weight=TOT_SALES))+
+  labs(title = "Total sales of chips by month, from 01/07/2018 to 30/06/2019",subtitle=paste("Total:",paste0("$",round(sum(data1$TOT_SALES),0)),
+                          "in chip sales,", nrow(data1),"transactions"),x="Month",y="Sales ($)")
+```
+
+## Sales fluctuated by month by little, March and December showed higher sales, followed by January and July. 
+
+```{r Number of transactions by Month,fig.align="center",fig.width=10}
+#Plot number of transactions by month
+ggplot(data=data1,aes(x=MONTH))+
+  geom_bar()+
+  labs(title = "Number of trasacntions by month, from 01/07/2018 to 30/06/2019",subtitle=paste("Total:", nrow(data1),"transactions"),x="Month",y="Number of transactions")
+```
+
+## March, December saw higher number of transactions by month, this might account for higher total sales in these months. 
+
+```{r Marketshare by brand,fig.align="center",fig.width=10}
+# Create top 10 brands as factors and classify the rest as "Others"
+
+data1$BRAND_FACTOR<-factor(data1$BRAND_FACTOR,levels=c("Kettle","Doritos","Pringles","RRD","Smiths","Infuzions","Thins","Woolworths","Cobs","Tostitos","Natural","CCs","GrnWves","Twisties","Burger","NCC","Cheezels","Tyrrells","French","Cheetos","Sunbites"),labels=c("Kettle","Doritos","Pringles","RRD","Smiths","Infuzions","Thins","Woolworths","Cobs","Tostitos",rep("Others",11)))
+
+# Check if there's any NA levels
+summary(is.na(data1$BRAND_FACTOR))
+
+# Plot Sales by top 10 brands and month
+
+ggplot(data=data1,aes(x=MONTH,fill=BRAND_FACTOR))+
+  geom_bar(aes(weight=TOT_SALES))+
+  labs(title = "Total sales of chips by month and brands, from 01/07/2018 to 30/06/2019",
+       subtitle=paste("Total:",paste0("$",round(sum(data1$TOT_SALES),0)),
+                          "in chip sales,", nrow(data1),"transactions,",
+                          n_distinct(data1$BRAND_NAME),"distinct brands"),
+       x="Month",
+       y="Sales ($)")+
+  stat_count(geom = "text",
+             aes(weight=TOT_SALES,label=paste(round((..count..)/sum(..count..)*100,1),"%")),
+             position=position_stack(vjust=0.5))
+
+# Plot PROD_QTY by brands and month
+ggplot(data=data1,aes(x=MONTH,fill=BRAND_FACTOR))+
+  geom_bar(aes(weight=PROD_QTY))+
+  labs(title = "Chip Quantity by month and brands, from 01/07/2018 to 30/06/2019",
+       subtitle=paste("Total:",sum(data1$PROD_QTY),
+                          "packs of chips were sold in", nrow(data1),"transactions,",
+                          n_distinct(data1$BRAND_NAME),"distinct brands"),
+       x="Month",
+       y="Product Quantity")+
+  stat_count(geom = "text",
+             aes(weight=PROD_QTY,label=paste(round((..count..)/sum(..count..)*100,1),"%")),
+             position=position_stack(vjust=0.5))
+```
+
+```{r Check price of each unit chip from top 10 brands over time}
+
+
+
+
+
+```
